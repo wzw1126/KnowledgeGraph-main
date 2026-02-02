@@ -67,8 +67,9 @@
 使用idea克隆项目并启动后端
 # 2. 创建数据库
 查看sql目录下的create_table.sql
-#3. 使用docker创建本地ollam后
-手动拉取deepseek-r1:1.5b 和 nomic-embed-text
+#3. 使用docker创建本地ollam后手动拉取deepseek-r1:1.5b 和 nomic-embed-text
+docker exec -it kg-ollama ollama pull deepseek-r1:1.5b
+docker exec -it kg-ollama ollama pull nomic-embed-text
 # 4. 启动前端
 cd knowledge-ui
 pnpm install
