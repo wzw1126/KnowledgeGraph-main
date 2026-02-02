@@ -69,7 +69,6 @@
 查看sql目录下的create_table.sql
 #3. 使用docker创建本地ollam后
 手动拉取deepseek-r1:1.5b 和 nomic-embed-text
-
 # 4. 启动前端
 cd knowledge-ui
 pnpm install
