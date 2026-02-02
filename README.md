@@ -1,7 +1,7 @@
 
 # 知识图谱系统
 
-基于 Spring Boot3 + SpringAI + Milvus + Neo4j + Tesseract + Vue3 + Element Plus 的本地大模型智能知识图谱管理系统，集成 RAG 检索增强、AI 对话、文档解析、OCR 识别等功能。
+基于本地大模型智能知识图谱管理系统，集成 RAG 检索增强，AI对话，文档解析，OCR识别等功能。
 
 ## 功能特性
 
