@@ -70,7 +70,7 @@
 # 3. 使用docker创建本地ollam后手动拉取deepseek-r1:1.5b 和 nomic-embed-text
 docker exec -it kg-ollama ollama pull deepseek-r1:1.5b
 docker exec -it kg-ollama ollama pull nomic-embed-text
-v2版本把nomic-embed-text改了，使用
+v2版本把nomic-embed-text改了,使用BGE-M3所以得改
 # 4. 启动前端
 cd knowledge-ui
 pnpm install
