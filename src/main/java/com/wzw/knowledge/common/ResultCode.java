@@ -102,7 +102,17 @@ public enum ResultCode {
     /**
      * 知识抽取失败
      */
-    EXTRACT_FAILED(4001, "知识抽取失败");
+    EXTRACT_FAILED(4001, "知识抽取失败"),
+
+    /**
+     * MinerU服务调用失败
+     */
+    MINERU_ERROR(5001, "MinerU文档解析服务调用失败"),
+
+    /**
+     * MinIO操作失败
+     */
+    MINIO_ERROR(5002, "对象存储操作失败");
 
     /**
      * 响应码

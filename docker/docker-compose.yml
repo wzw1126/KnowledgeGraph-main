@@ -113,7 +113,68 @@ services:
       - knowledge-graph-net
     restart: unless-stopped
     command: serve  # 修复：直接使用 serve 命令，Ollama 镜像入口点已经设置好了
+    # MinerU VL Model Server (视觉语言模型服务)
 
+  mineru-vllm-server:
+    image: mineru-vllm:latest
+    container_name: kg-mineru-vllm
+    ports:
+      - "30000:30000"
+    volumes:
+      - kg-mineru-models:/opt/models
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - MINERU_MODEL_SOURCE=local
+    entrypoint: mineru-vllm-server
+    command:
+      --host 0.0.0.0
+      --port 30000
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    ipc: host
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:30000/health || exit 1" ]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 120s
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    networks:
+      - knowledge-graph-net
+    restart: unless-stopped
+
+
+    # MinerU API Server (PDF解析API服务)
+  mineru-api:
+    image: mineru-vllm:latest
+    container_name: kg-mineru-api
+    ports:
+      - "30001:30001"
+    volumes:
+      - kg-mineru-data:/opt/data
+    environment:
+      - VL_SERVER_URL=http://mineru-vllm-server:30000
+      - MINERU_MODEL_SOURCE=local
+    entrypoint: mineru-api
+    command:
+      --host 0.0.0.0
+      --port 30001
+    ulimits:
+      memlock: -1
+      stack: 67108864
+    ipc: host
+    depends_on:
+      - mineru-vllm-server
+    networks:
+      - knowledge-graph-net
+    restart: unless-stopped
 networks:
   knowledge-graph-net:
     driver: bridge
@@ -125,3 +186,5 @@ volumes:
   kg-minio-data:
   kg-milvus-data:
   kg-ollama-models:
+  kg-mineru-models:
+  kg-mineru-data:

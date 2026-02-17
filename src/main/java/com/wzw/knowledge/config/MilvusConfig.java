@@ -39,9 +39,9 @@ public class MilvusConfig {
     private String collectionName = "knowledge_vectors";
 
     /**
-     * 向量维度
+     * 向量维度（BGE-M3输出1024维）
      */
-    private Integer dimension = 768;
+    private Integer dimension = 1024;
 
     /**
      * 索引类型

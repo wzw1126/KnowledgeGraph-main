@@ -1,11 +1,11 @@
-package com.wzw.knowledge.service.impl;
+package com.uka.knowledge.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
-import com.wzw.knowledge.common.ResultCode;
 import com.wzw.knowledge.exception.BusinessException;
+import com.wzw.knowledge.common.ResultCode;
 import com.wzw.knowledge.model.dto.KnowledgeExtractDTO;
 import com.wzw.knowledge.model.entity.KnowledgeNode;
 import com.wzw.knowledge.model.entity.KnowledgeRelation;
@@ -177,21 +177,35 @@ public class OllamaServiceImpl implements OllamaService {
     }
 
     /**
-     * 生成文本的向量表示
+     * BGE-M3 向量维度
+     */
+    private static final int EMBEDDING_DIMENSION = 1024;
+
+    /**
+     * 生成文本的向量表示（BGE-M3模型，1024维）
      */
     @Override
     public float[] generateEmbedding(String text) {
         if (StrUtil.isBlank(text)) {
             // 返回零向量
-            return new float[768];
+            return new float[EMBEDDING_DIMENSION];
         }
 
         try {
-            return embeddingModel.embed(text);
+            float[] embedding = embeddingModel.embed(text);
+            // 验证维度一致性
+            if (embedding.length != EMBEDDING_DIMENSION) {
+                log.warn("Embedding维度不匹配: expected={}, actual={}, 将进行填充/截断",
+                        EMBEDDING_DIMENSION, embedding.length);
+                float[] adjusted = new float[EMBEDDING_DIMENSION];
+                System.arraycopy(embedding, 0, adjusted, 0, Math.min(embedding.length, EMBEDDING_DIMENSION));
+                return adjusted;
+            }
+            return embedding;
         } catch (Exception e) {
             log.error("向量生成失败", e);
             // 返回零向量，避免程序中断
-            return new float[768];
+            return new float[EMBEDDING_DIMENSION];
         }
     }
 

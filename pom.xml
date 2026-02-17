@@ -30,7 +30,8 @@
         <!-- 依赖版本管理 -->
         <mybatis-plus.version>3.5.5</mybatis-plus.version>
         <spring-ai.version>1.1.2</spring-ai.version>
-        <milvus-sdk.version>2.3.4</milvus-sdk.version>
+        <milvus-sdk.version>2.5.6</milvus-sdk.version>
+        <minio.version>8.5.7</minio.version>
         <neo4j.version>5.18.0</neo4j.version>
         <tika.version>2.9.1</tika.version>
         <tesseract.version>5.3.3</tesseract.version>
@@ -108,6 +109,13 @@
             <groupId>io.milvus</groupId>
             <artifactId>milvus-sdk-java</artifactId>
             <version>${milvus-sdk.version}</version>
+        </dependency>
+
+        <!-- MinIO对象存储SDK -->
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>${minio.version}</version>
         </dependency>
 
         <!-- ==================== 文档解析相关依赖 ==================== -->

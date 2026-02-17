@@ -1,4 +1,4 @@
-package com.wzw.knowledge.service.impl;
+package com.uka.knowledge.service.impl;
 
 import cn.hutool.core.util.StrUtil;
 import com.alibaba.fastjson2.JSON;
@@ -25,7 +25,7 @@ import java.util.Map;
  * 实现RAG检索功能，从向量数据库检索相关文档和知识节点
  * </p>
  *
- * @author wzw
+ * @author uka
  * @version 1.0
  */
 @Slf4j
@@ -68,7 +68,7 @@ public class RagServiceImpl implements RagService {
     @Override
     public RagResult search(String query, int topK) {
         log.info("执行RAG检索, query={}, topK={}", query, topK);
-        
+
         // 检索相关文档
         List<RagDocument> documents = searchDocuments(query, topK);
         log.info("文档检索完成, 找到{}个相关文档", documents.size());
@@ -79,32 +79,38 @@ public class RagServiceImpl implements RagService {
 
         // 构建上下文提示词
         String contextPrompt = buildContextPrompt(documents, query);
-        
+
         // 打印完整的 prompt 用于调试（截取前2000字符以确保看到数值内容）
         if (log.isDebugEnabled()) {
-            String previewPrompt = contextPrompt.length() > 2000 
-                ? contextPrompt.substring(0, 2000) + "..." 
-                : contextPrompt;
+            String previewPrompt = contextPrompt.length() > 2000
+                    ? contextPrompt.substring(0, 2000) + "..."
+                    : contextPrompt;
             log.debug("RAG上下文提示词预览:\n{}", previewPrompt);
         }
-        
+
         // 检测潜在的数值信息并记录（用于审计）
         if (documents != null && !documents.isEmpty()) {
             for (RagDocument doc : documents) {
                 String content = doc.getMatchedContent() != null ? doc.getMatchedContent() : doc.getSummary();
                 if (content != null && content.matches(".*\\d+\\s*(g|mg|kg|克|毫克|公斤|千克).*")) {
-                    log.info("检测到包含数值单位的文档: docName={}, 内容片段={}", 
-                        doc.getName(), 
-                        content.length() > 200 ? content.substring(0, 200) : content);
+                    log.info("检测到包含数值单位的文档: docName={}, 内容片段={}",
+                            doc.getName(),
+                            content.length() > 200 ? content.substring(0, 200) : content);
                 }
             }
         }
-        
+
         return new RagResult(documents, nodes, contextPrompt);
     }
 
     /**
-     * 检索相关文档（基于分块检索，返回页码信息）
+     * 检索相关文档（V2.0 - 父子索引 + 混合检索）
+     * <p>
+     * 流程：
+     * 1. 混合检索（BM25字面匹配 + 向量语义匹配 + RRF融合）搜索Child块
+     * 2. 通过parentId回溯Parent块
+     * 3. 用Parent块的完整内容构建RAG上下文
+     * </p>
      */
     @Override
     public List<RagDocument> searchDocuments(String query, int topK) {
@@ -114,38 +120,65 @@ public class RagServiceImpl implements RagService {
             // 生成查询向量
             float[] queryVector = ollamaService.generateEmbedding(query);
 
-            // 向量搜索 - 搜索chunk类型
+            // 混合检索 - 搜索child类型（BM25 + 向量 + RRF融合）
             List<VectorService.VectorSearchResult> searchResults =
-                    vectorService.search(queryVector, topK, "chunk");
+                    vectorService.hybridSearch(queryVector, query, topK, "child");
 
-            // 获取分块和文档详情
+            log.info("混合检索返回{}个Child块结果", searchResults.size());
+
+            // 去重parentId，避免同一个Parent块被重复返回
+            java.util.Set<Long> seenParentIds = new java.util.LinkedHashSet<>();
+
             for (VectorService.VectorSearchResult result : searchResults) {
                 if (result.id() == null) continue;
 
                 try {
-                    // 查询分块信息
-                    DocumentChunk chunk = documentChunkMapper.selectByChunkId(result.id());
-                    if (chunk == null) continue;
+                    // 查询Child分块信息
+                    DocumentChunk childChunk = documentChunkMapper.selectByChunkId(result.id());
+                    if (childChunk == null) continue;
+
+                    // 通过parentId回溯Parent块
+                    Long parentId = result.parentId();
+                    if (parentId == null) {
+                        parentId = childChunk.getParentId();
+                    }
+
+                    DocumentChunk parentChunk = null;
+                    if (parentId != null && parentId > 0) {
+                        // 去重：同一个Parent只取一次（取最高分的Child对应的Parent）
+                        if (seenParentIds.contains(parentId)) {
+                            continue;
+                        }
+                        seenParentIds.add(parentId);
+                        parentChunk = documentChunkMapper.selectParentById(parentId);
+                    }
 
                     // 查询所属文档
-                    Document document = documentService.getById(chunk.getDocumentId());
+                    Long docId = childChunk.getDocumentId();
+                    Document document = documentService.getById(docId);
                     if (document == null) continue;
 
                     RagDocument ragDoc = new RagDocument();
                     ragDoc.setId(document.getId());
-                    ragDoc.setChunkId(chunk.getId());
+                    ragDoc.setChunkId(childChunk.getId());
                     ragDoc.setName(document.getName());
                     ragDoc.setFileType(document.getFileType());
-                    ragDoc.setPageNum(chunk.getPageNum());
+                    ragDoc.setPageNum(childChunk.getPageNum());
                     ragDoc.setSummary(document.getSummary());
                     ragDoc.setScore((double) result.score());
 
-                    // 使用分块内容作为匹配片段
-                    ragDoc.setMatchedContent(chunk.getContent());
-                    
-                    log.debug("找到相关文档分块: docName={}, pageNum={}, score={}, contentLength={}", 
-                        document.getName(), chunk.getPageNum(), result.score(), 
-                        chunk.getContent() != null ? chunk.getContent().length() : 0);
+                    // 关键：用Parent块的完整内容作为RAG上下文（"存大搜小"）
+                    if (parentChunk != null && StrUtil.isNotBlank(parentChunk.getContent())) {
+                        ragDoc.setMatchedContent(parentChunk.getContent());
+                        log.debug("父子索引回溯: childId={}, parentId={}, parentTitle={}, parentLen={}",
+                                childChunk.getId(), parentId,
+                                parentChunk.getSectionTitle(),
+                                parentChunk.getContent().length());
+                    } else {
+                        // 降级：使用Child块内容
+                        ragDoc.setMatchedContent(childChunk.getContent());
+                        log.debug("未找到Parent块，使用Child内容: childId={}", childChunk.getId());
+                    }
 
                     results.add(ragDoc);
                 } catch (Exception e) {
@@ -156,11 +189,12 @@ public class RagServiceImpl implements RagService {
             log.error("文档检索失败", e);
         }
 
+        log.info("文档检索完成（父子索引+混合检索）, 返回{}个结果", results.size());
         return results;
     }
 
     /**
-     * 检索相关知识节点
+     * 检索相关知识节点（使用混合检索）
      */
     @Override
     public List<RagNode> searchNodes(String query, int topK) {
@@ -170,9 +204,9 @@ public class RagServiceImpl implements RagService {
             // 生成查询向量
             float[] queryVector = ollamaService.generateEmbedding(query);
 
-            // 向量搜索 - 搜索节点类型
+            // 混合检索 - 搜索节点类型
             List<VectorService.VectorSearchResult> searchResults =
-                    vectorService.search(queryVector, topK, "node");
+                    vectorService.hybridSearch(queryVector, query, topK, "node");
 
             // 获取节点详情及其关系
             for (VectorService.VectorSearchResult result : searchResults) {

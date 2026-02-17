@@ -2,8 +2,8 @@ package com.wzw.knowledge.util;
 
 import cn.hutool.core.io.FileUtil;
 import cn.hutool.core.util.StrUtil;
-import com.wzw.knowledge.common.ResultCode;
 import com.wzw.knowledge.exception.BusinessException;
+import com.wzw.knowledge.common.ResultCode;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.pdfbox.Loader;
@@ -24,6 +24,8 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 文档解析工具类
@@ -417,5 +419,99 @@ public class DocumentParser {
 
         log.info("Markdown解析完成（带页码），分段数: {}", pages.size());
         return new ParseResult(fullText, pages);
+    }
+
+    // ==================== Markdown章节切分（父子索引） ====================
+
+    /**
+     * Markdown章节封装类
+     */
+    @Data
+    public static class MarkdownSection {
+        /** 章节标题 */
+        private String title;
+        /** 章节完整内容（含标题） */
+        private String content;
+        /** 章节序号（从0开始） */
+        private int index;
+
+        public MarkdownSection(String title, String content, int index) {
+            this.title = title;
+            this.content = content;
+            this.index = index;
+        }
+    }
+
+    /** 匹配Markdown标题行（# ~ ###） */
+    private static final Pattern HEADING_PATTERN = Pattern.compile("^(#{1,3})\\s+(.+)$", Pattern.MULTILINE);
+
+    /**
+     * 将Markdown文本按章节（标题）切分为多个Section
+     * <p>
+     * 按 #、##、### 级别标题进行切分，每个标题及其下方内容组成一个Section。
+     * 如果没有任何标题，则整篇文档作为一个Section返回。
+     * 对于过短的Section（少于50字），会与前一个Section合并。
+     * </p>
+     *
+     * @param markdownText Markdown文本
+     * @return 章节列表
+     */
+    public List<MarkdownSection> splitMarkdownBySections(String markdownText) {
+        if (StrUtil.isBlank(markdownText)) {
+            return new ArrayList<>();
+        }
+
+        List<MarkdownSection> sections = new ArrayList<>();
+        Matcher matcher = HEADING_PATTERN.matcher(markdownText);
+
+        List<int[]> headingPositions = new ArrayList<>(); // [start, end]
+        List<String> headingTitles = new ArrayList<>();
+
+        while (matcher.find()) {
+            headingPositions.add(new int[]{matcher.start(), matcher.end()});
+            headingTitles.add(matcher.group(2).trim());
+        }
+
+        if (headingPositions.isEmpty()) {
+            // 没有标题，整篇作为一个Section
+            String trimmed = markdownText.trim();
+            if (!trimmed.isEmpty()) {
+                sections.add(new MarkdownSection("全文", trimmed, 0));
+            }
+            return sections;
+        }
+
+        // 处理第一个标题之前的内容（如果有）
+        String beforeFirst = markdownText.substring(0, headingPositions.get(0)[0]).trim();
+        if (!beforeFirst.isEmpty() && beforeFirst.length() > 50) {
+            sections.add(new MarkdownSection("前言", beforeFirst, 0));
+        }
+
+        // 按标题切分
+        for (int i = 0; i < headingPositions.size(); i++) {
+            int start = headingPositions.get(i)[0];
+            int end = (i + 1 < headingPositions.size())
+                    ? headingPositions.get(i + 1)[0]
+                    : markdownText.length();
+
+            String sectionContent = markdownText.substring(start, end).trim();
+            String title = headingTitles.get(i);
+
+            if (sectionContent.length() < 50 && !sections.isEmpty()) {
+                // 过短的Section合并到前一个
+                MarkdownSection prev = sections.get(sections.size() - 1);
+                prev.setContent(prev.getContent() + "\n\n" + sectionContent);
+            } else if (!sectionContent.isEmpty()) {
+                sections.add(new MarkdownSection(title, sectionContent, sections.size()));
+            }
+        }
+
+        // 如果合并后没有任何section，整篇作为一个
+        if (sections.isEmpty()) {
+            sections.add(new MarkdownSection("全文", markdownText.trim(), 0));
+        }
+
+        log.info("Markdown章节切分完成，共{}个章节", sections.size());
+        return sections;
     }
 }

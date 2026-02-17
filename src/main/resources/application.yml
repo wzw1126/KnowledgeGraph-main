@@ -98,12 +98,12 @@ milvus:
   port: 19530
   # 集合名称
   collection-name: knowledge_vectors
-  # 向量维度（与embedding模型输出维度一致）
-  dimension: 768
-  # 索引类型
-  index-type: IVF_FLAT
-  # 度量类型
-  metric-type: COSINE
+#  # 向量维度（与embedding模型输出维度一致）
+#  dimension: 768
+#  # 索引类型
+#  index-type: IVF_FLAT
+#  # 度量类型
+#  metric-type: COSINE
 
 ocr:
   # Tesseract数据目录（需要下载语言包）
